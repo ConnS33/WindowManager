@@ -43,11 +43,11 @@ namespace WindowManager
         private const int HOTKEY_ID = 9000;
         private const uint MOD_CONTROL = 0x0002;
         private const uint MOD_ALT = 0x0001;
+        private const uint MOD_SHIFT = 0x0004;
         private const uint VK_LEFT = 0x25;
         private const uint VK_RIGHT = 0x27;
         private const uint VK_UP = 0x26;
         private const uint VK_DOWN = 0x28;
-        private const uint VK_SPACE = 0x20;
 
         private bool isOverlayVisible = false;
         private WindowInteropHelper host;
@@ -61,29 +61,24 @@ namespace WindowManager
             CreateZoneOverlays();
         }
 
-        private enum SnapZone 
-        { 
-            FullScreen, 
-            LeftHalf, 
-            RightHalf, 
-            TopHalf, 
-            BottomHalf, 
-            TopLeft, 
-            TopRight, 
-            BottomLeft, 
-            BottomRight 
-        }
         
-        private Dictionary<IntPtr, SnapZone> windowStates = new Dictionary<IntPtr, SnapZone>();
-
         private void RegisterHotKeys()
         {
             var hWnd = host.Handle;
             var source = HwndSource.FromHwnd(hWnd);
             source.AddHook(HwndHook);
 
-            // Register single hotkey for cycling through zones
-            RegisterHotKey(hWnd, 1, MOD_CONTROL | MOD_ALT, VK_SPACE);  // Ctrl+Alt+Space to cycle zones
+            // Register hotkeys for half-screen with Ctrl+Alt+Arrow
+            RegisterHotKey(hWnd, 1, MOD_CONTROL | MOD_ALT, VK_LEFT);   // Left half
+            RegisterHotKey(hWnd, 2, MOD_CONTROL | MOD_ALT, VK_RIGHT);  // Right half
+            RegisterHotKey(hWnd, 3, MOD_CONTROL | MOD_ALT, VK_UP);     // Top half
+            RegisterHotKey(hWnd, 4, MOD_CONTROL | MOD_ALT, VK_DOWN);   // Bottom half
+
+            // Register hotkeys for quarter-screen with Shift+Ctrl+Alt+Arrow
+            RegisterHotKey(hWnd, 5, MOD_SHIFT | MOD_CONTROL | MOD_ALT, VK_LEFT);   // Top Left
+            RegisterHotKey(hWnd, 6, MOD_SHIFT | MOD_CONTROL | MOD_ALT, VK_RIGHT);  // Top Right
+            RegisterHotKey(hWnd, 7, MOD_SHIFT | MOD_CONTROL | MOD_ALT, VK_UP);     // Bottom Left
+            RegisterHotKey(hWnd, 8, MOD_SHIFT | MOD_CONTROL | MOD_ALT, VK_DOWN);   // Bottom Right
         }
 
         private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -94,61 +89,37 @@ namespace WindowManager
                 var activeWindow = GetForegroundWindow();
                 if (activeWindow != IntPtr.Zero && activeWindow != host.Handle)
                 {
-                    // Get current state or default to FullScreen
-                    if (!windowStates.TryGetValue(activeWindow, out var currentState))
+                    // Handle window snapping hotkeys
+                    switch (wParam.ToInt32())
                     {
-                        currentState = SnapZone.FullScreen;
-                    }
-
-                    // Cycle to next zone
-                    var nextState = currentState switch
-                    {
-                        SnapZone.FullScreen => SnapZone.LeftHalf,
-                        SnapZone.LeftHalf => SnapZone.RightHalf,
-                        SnapZone.RightHalf => SnapZone.TopHalf,
-                        SnapZone.TopHalf => SnapZone.BottomHalf,
-                        SnapZone.BottomHalf => SnapZone.TopLeft,
-                        SnapZone.TopLeft => SnapZone.TopRight,
-                        SnapZone.TopRight => SnapZone.BottomLeft,
-                        SnapZone.BottomLeft => SnapZone.BottomRight,
-                        _ => SnapZone.FullScreen
-                    };
-
-                    // Snap window based on the next zone
-                    switch (nextState)
-                    {
-                        case SnapZone.FullScreen:
-                            var screen = SystemParameters.WorkArea;
-                            SetWindowPos(activeWindow, IntPtr.Zero, 0, 0, (int)screen.Width, (int)screen.Height, SWP_SHOWWINDOW);
-                            break;
-                        case SnapZone.LeftHalf:
+                        // Half-screen
+                        case 1: // Ctrl+Alt+Left - Left Half
                             SnapWindow(activeWindow, 0, 0, 0.5, 1);
                             break;
-                        case SnapZone.RightHalf:
+                        case 2: // Ctrl+Alt+Right - Right Half
                             SnapWindow(activeWindow, 0.5, 0, 0.5, 1);
                             break;
-                        case SnapZone.TopHalf:
+                        case 3: // Ctrl+Alt+Up - Top Half
                             SnapWindow(activeWindow, 0, 0, 1, 0.5);
                             break;
-                        case SnapZone.BottomHalf:
+                        case 4: // Ctrl+Alt+Down - Bottom Half
                             SnapWindow(activeWindow, 0, 0.5, 1, 0.5);
                             break;
-                        case SnapZone.TopLeft:
+                        
+                        // Quarter-screen (Shift+Ctrl+Alt+Arrow)
+                        case 5: // Shift+Ctrl+Alt+Left - Top Left
                             SnapWindow(activeWindow, 0, 0, 0.5, 0.5);
                             break;
-                        case SnapZone.TopRight:
+                        case 6: // Shift+Ctrl+Alt+Right - Top Right
                             SnapWindow(activeWindow, 0.5, 0, 0.5, 0.5);
                             break;
-                        case SnapZone.BottomLeft:
+                        case 7: // Shift+Ctrl+Alt+Up - Bottom Left
                             SnapWindow(activeWindow, 0, 0.5, 0.5, 0.5);
                             break;
-                        case SnapZone.BottomRight:
+                        case 8: // Shift+Ctrl+Alt+Down - Bottom Right
                             SnapWindow(activeWindow, 0.5, 0.5, 0.5, 0.5);
                             break;
                     }
-
-                    // Update the window's state
-                    windowStates[activeWindow] = nextState;
                 }
                 handled = true;
             }
@@ -177,14 +148,17 @@ namespace WindowManager
             // Clear any existing overlays
             OverlayCanvas.Children.Clear();
 
-            // Top Left
-            AddZoneOverlay(0, 0, halfWidth, halfHeight, "Top Left (Ctrl+Alt+Q)");
-            // Top Right
-            AddZoneOverlay(halfWidth, 0, halfWidth, halfHeight, "Top Right (Ctrl+Alt+W)");
-            // Bottom Left
-            AddZoneOverlay(0, halfHeight, halfWidth, halfHeight, "Bottom Left (Ctrl+Alt+A)");
-            // Bottom Right
-            AddZoneOverlay(halfWidth, halfHeight, halfWidth, halfHeight, "Bottom Right (Ctrl+Alt+S)");
+            // Half-screen
+            AddZoneOverlay(0, 0, halfWidth, height, "Left Half (Ctrl+Alt+←)");
+            AddZoneOverlay(halfWidth, 0, halfWidth, height, "Right Half (Ctrl+Alt+→)");
+            AddZoneOverlay(0, 0, width, halfHeight, "Top Half (Ctrl+Alt+↑)");
+            AddZoneOverlay(0, halfHeight, width, halfHeight, "Bottom Half (Ctrl+Alt+↓)");
+            
+            // Quarter-screen
+            AddZoneOverlay(0, 0, halfWidth, halfHeight, "Top Left (Shift+Ctrl+Alt+←)");
+            AddZoneOverlay(halfWidth, 0, halfWidth, halfHeight, "Top Right (Shift+Ctrl+Alt+→)");
+            AddZoneOverlay(0, halfHeight, halfWidth, halfHeight, "Bottom Left (Shift+Ctrl+Alt+↑)");
+            AddZoneOverlay(halfWidth, halfHeight, halfWidth, halfHeight, "Bottom Right (Shift+Ctrl+Alt+↓)");
         }
 
         private void AddZoneOverlay(double x, double y, double width, double height, string label)

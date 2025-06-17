@@ -10,19 +10,23 @@ A lightweight window management utility for Windows that allows you to quickly s
 - Easily enable/disable the window snapping functionality
 - Support for both 4-zone and half-screen snapping
 
-## Keyboard Shortcuts
+## How to Use
 
-### 4-Zone Window Snapping
-- `Ctrl + Alt + Q`: Snap window to Top Left quadrant 
-- `Ctrl + Alt + W`: Snap window to Top Right quadrant
-- `Ctrl + Alt + A`: Snap window to Bottom Left quadrant
-- `Ctrl + Alt + S`: Snap window to Bottom Right quadrant
+### Window Snapping
 
-### Half-Screen Snapping (Legacy)
-- `Ctrl + Alt + Left Arrow`: Snap window to left half
-- `Ctrl + Alt + Right Arrow`: Snap window to right half
-- `Ctrl + Alt + Up Arrow`: Snap window to top half
-- `Ctrl + Alt + Down Arrow`: Snap window to bottom half
+#### Half-Screen Snapping:
+- `Ctrl + Alt + ←` - Left Half
+- `Ctrl + Alt + →` - Right Half
+- `Ctrl + Alt + ↑` - Top Half
+- `Ctrl + Alt + ↓` - Bottom Half
+
+#### Quarter-Screen Snapping:
+- `Shift + Ctrl + Alt + ←` - Top Left Quadrant
+- `Shift + Ctrl + Alt + →` - Top Right Quadrant
+- `Shift + Ctrl + Alt + ↑` - Bottom Left Quadrant
+- `Shift + Ctrl + Alt + ↓` - Bottom Right Quadrant
+
+Visual overlays will appear when you press any of these key combinations to show the target zone.
 
 ## System Tray Controls
 
