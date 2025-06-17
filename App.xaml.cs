@@ -35,8 +35,8 @@ namespace WindowManager
             var toggleItem = new ToolStripMenuItem("Enable/Disable");
             toggleItem.Click += (s, e) => ToggleEnabled();
             
-            var screenSetupItem = new ToolStripMenuItem("Screen Setup");
-            screenSetupItem.Click += (s, e) => ShowScreenSetup();
+            var screenSetupItem = new ToolStripMenuItem("Edit Layout");
+            screenSetupItem.Click += (s, e) => ShowLayoutEditor();
             
             var exitItem = new ToolStripMenuItem("Exit");
             exitItem.Click += (s, e) => Shutdown();
@@ -51,25 +51,11 @@ namespace WindowManager
             notifyIcon.DoubleClick += (s, e) => ToggleEnabled();
         }
         
-        private void ShowScreenSetup()
+        private void ShowLayoutEditor()
         {
-            // Show the main window if it's hidden
-            if (mainWindow == null)
-            {
-                mainWindow = new MainWindow();
-                mainWindow.Show();
-            }
-            else if (!mainWindow.IsVisible)
-            {
-                mainWindow.Show();
-            }
-            
-            // Bring the window to front
-            mainWindow.WindowState = WindowState.Normal;
-            mainWindow.Activate();
-            mainWindow.Topmost = true;
-            mainWindow.Topmost = false;
-            mainWindow.Focus();
+            var layoutEditor = new LayoutEditorWindow();
+            layoutEditor.Owner = Application.Current.MainWindow;
+            layoutEditor.ShowDialog();
         }
 
         private void ToggleEnabled()
