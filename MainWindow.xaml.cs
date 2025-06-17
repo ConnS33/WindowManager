@@ -71,17 +71,17 @@ namespace WindowManager
             var source = HwndSource.FromHwnd(hWnd);
             source.AddHook(HwndHook);
 
-            // Register hotkeys for half-screen with Ctrl+Shift+Alt+Arrow
-            RegisterHotKey(hWnd, 1, MOD_CONTROL | MOD_SHIFT | MOD_ALT, VK_LEFT);   // Left half
-            RegisterHotKey(hWnd, 2, MOD_CONTROL | MOD_SHIFT | MOD_ALT, VK_RIGHT);  // Right half
-            RegisterHotKey(hWnd, 3, MOD_CONTROL | MOD_SHIFT | MOD_ALT, VK_UP);     // Top half
-            RegisterHotKey(hWnd, 4, MOD_CONTROL | MOD_SHIFT | MOD_ALT, VK_DOWN);   // Bottom half
+            // Register hotkeys for half-screen with Ctrl+Alt+Arrow
+            RegisterHotKey(hWnd, 1, MOD_CONTROL | MOD_ALT, VK_LEFT);   // Left half
+            RegisterHotKey(hWnd, 2, MOD_CONTROL | MOD_ALT, VK_RIGHT);  // Right half
+            RegisterHotKey(hWnd, 3, MOD_CONTROL | MOD_ALT, VK_UP);     // Top half
+            RegisterHotKey(hWnd, 4, MOD_CONTROL | MOD_ALT, VK_DOWN);   // Bottom half
 
-            // Register hotkeys for quarter-screen with Ctrl+Shift+Alt+Number (1-4)
-            RegisterHotKey(hWnd, 5, MOD_CONTROL | MOD_SHIFT | MOD_ALT, 0x31);   // 1 - Top Left
-            RegisterHotKey(hWnd, 6, MOD_CONTROL | MOD_SHIFT | MOD_ALT, 0x32);     // 2 - Top Right
-            RegisterHotKey(hWnd, 7, MOD_CONTROL | MOD_SHIFT | MOD_ALT, 0x33);     // 3 - Bottom Left
-            RegisterHotKey(hWnd, 8, MOD_CONTROL | MOD_SHIFT | MOD_ALT, 0x34);     // 4 - Bottom Right
+            // Register hotkeys for quarter-screen with Shift+Ctrl+Alt+Arrow
+            RegisterHotKey(hWnd, 5, MOD_SHIFT | MOD_CONTROL | MOD_ALT, VK_LEFT);   // Top Left
+            RegisterHotKey(hWnd, 6, MOD_SHIFT | MOD_CONTROL | MOD_ALT, VK_RIGHT);  // Top Right
+            RegisterHotKey(hWnd, 7, MOD_SHIFT | MOD_CONTROL | MOD_ALT, VK_UP);     // Bottom Left
+            RegisterHotKey(hWnd, 8, MOD_SHIFT | MOD_CONTROL | MOD_ALT, VK_DOWN);   // Bottom Right
         }
 
         private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
