@@ -132,9 +132,9 @@ namespace WindowManager.Services
         {
             try
             {
-                // Convert relative zone coordinates to screen coordinates
-                int x = (int)(screenBounds.Left + zoneRect.Left);
-                int y = (int)(screenBounds.Top + zoneRect.Top);
+                // Use the provided coordinates directly (they're already in screen coordinates)
+                int x = (int)zoneRect.Left;
+                int y = (int)zoneRect.Top;
                 int width = (int)zoneRect.Width;
                 int height = (int)zoneRect.Height;
 

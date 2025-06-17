@@ -265,10 +265,26 @@ namespace WindowManager
 
                 if (applyToAllWindows)
                 {
-                    // Apply layout to all open windows
+                    // Get the currently active window to exclude it
+                    IntPtr foregroundWindow = WindowManagerService.GetForegroundWindow();
+                    Debug.WriteLine($"Active window handle: {foregroundWindow}");
+                    
+                    // Only get visible windows with titles that aren't the window manager or the currently active window
                     var windows = _windowManager.GetOpenWindows()
-                        .Where(w => w.Handle != IntPtr.Zero)
+                        .Where(w => w.Handle != IntPtr.Zero && 
+                                   !string.IsNullOrWhiteSpace(w.Title) &&
+                                   !w.Title.Contains("Window Manager") &&
+                                   !w.Title.Contains("Microsoft Text Input Application") &&
+                                   !w.Title.Contains("Program Manager") &&
+                                   !w.Title.Contains("Settings") &&
+                                   w.Handle != foregroundWindow) // Exclude the currently active window
                         .ToList();
+                    
+                    Debug.WriteLine($"Will process {windows.Count} windows for layout");
+                    foreach (var window in windows)
+                    {
+                        Debug.WriteLine($"Processing window: '{window.Title}' (Handle: {window.Handle})");
+                    }
 
                     if (windows.Count == 0)
                     {
@@ -286,10 +302,10 @@ namespace WindowManager
                         
                         // Convert normalized zone coordinates to screen coordinates
                         var zoneRect = new Rect(
-                            zone.Bounds.Left,
-                            zone.Bounds.Top,
-                            zone.Bounds.Width,
-                            zone.Bounds.Height);
+                            zone.Bounds.Left * screenWidth,
+                            zone.Bounds.Top * screenHeight,
+                            zone.Bounds.Width * screenWidth,
+                            zone.Bounds.Height * screenHeight);
 
                         // Move the window to the zone
                         _windowManager.MoveWindowToZone(window.Handle, zoneRect, screenBounds);
@@ -308,10 +324,10 @@ namespace WindowManager
                     // Get the first zone in the layout
                     var zone = layout.Zones[0];
                     var zoneRect = new Rect(
-                        zone.Bounds.Left,
-                        zone.Bounds.Top,
-                        zone.Bounds.Width,
-                        zone.Bounds.Height);
+                        zone.Bounds.Left * screenWidth,
+                        zone.Bounds.Top * screenHeight,
+                        zone.Bounds.Width * screenWidth,
+                        zone.Bounds.Height * screenHeight);
 
                     _windowManager.MoveWindowToZone(selectedWindow.Handle, zoneRect, screenBounds);
                 }
