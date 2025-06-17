@@ -72,54 +72,29 @@ namespace WindowManager
         {
             try
             {
-                Console.WriteLine("Window_Loaded started");
-                
-                // Get the primary screen dimensions
+                // Set window position and size
                 var primaryScreen = System.Windows.SystemParameters.WorkArea;
-                
-                // Set window to cover only the primary screen
                 this.Left = primaryScreen.Left;
                 this.Top = primaryScreen.Top;
                 this.Width = primaryScreen.Width;
                 this.Height = primaryScreen.Height;
-                
-                Console.WriteLine($"Window positioned at ({this.Left}, {this.Top}) with size {this.Width}x{this.Height}");
-                
-                // Initialize zones list if needed
+
+                // Initialize collections and UI elements
                 if (zones == null)
-                {
                     zones = new List<Grid>();
-                    Console.WriteLine("Initialized zones list");
-                }
-                
-                // Add left zone if not already present
+
                 if (LeftZone != null && !zones.Contains(LeftZone))
-                {
                     zones.Add(LeftZone);
-                    Console.WriteLine("Added LeftZone to zones list in Window_Loaded");
-                }
-                
-                // Hide the right column initially
+
+                // Initialize right column and splitter
                 if (RightColumn != null)
-                {
                     RightColumn.Width = new GridLength(0);
-                    Console.WriteLine("RightColumn width set to 0");
-                }
-                
                 if (VerticalSplitter != null)
-                {
                     VerticalSplitter.Visibility = Visibility.Collapsed;
-                    Console.WriteLine("VerticalSplitter hidden");
-                }
-                
                 if (RightZone != null)
-                {
                     RightZone.Visibility = Visibility.Collapsed;
-                    Console.WriteLine("RightZone hidden");
-                }
-                
-                // Update zone labels
-                Console.WriteLine("Calling UpdateZoneLabels");
+
+                // Update UI
                 UpdateZoneLabels();
                 Console.WriteLine("Window_Loaded completed");
             }
@@ -308,7 +283,41 @@ namespace WindowManager
                 this.Close();
             }
         }
+        
+        private void SetWindowTransparency()
+        {
+            try
+            {
+                // Just set the window background to transparent
+                // The controls will handle their own opacity
+                this.Background = System.Windows.Media.Brushes.Transparent;
+                this.Opacity = 1.0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error setting window transparency: {ex.Message}");
+            }
+        }
 
 
+    }
+    
+    // Native methods for window transparency
+    internal static class NativeMethods
+    {
+        public const int GWL_EXSTYLE = -20;
+        public const int WS_EX_LAYERED = 0x80000;
+        public const int WS_EX_TRANSPARENT = 0x20;
+        public const int LWA_ALPHA = 0x2;
+        public const int LWA_COLORKEY = 0x1;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern int GetWindowLong(IntPtr hwnd, int index);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
     }
 }

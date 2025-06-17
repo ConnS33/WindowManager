@@ -10,7 +10,7 @@
         WindowStyle="None"
         ResizeMode="NoResize"
         Topmost="True"
-        Background="#66000000"
+        Background="Transparent"
         AllowsTransparency="True"
         Loaded="Window_Loaded"
         KeyDown="Window_KeyDown">
@@ -62,6 +62,7 @@
                 Grid.Row="1" 
                 Margin="10" 
                 Background="#1E1E1E"
+                Opacity="0.7"
                 CornerRadius="4">
             <Grid x:Name="EditorGrid" 
                   Background="Transparent"
@@ -74,7 +75,7 @@
                 </Grid.ColumnDefinitions>
                 
                 <!-- Left Zone -->
-                <Grid x:Name="LeftZone" Grid.Column="0" Background="#2D2D30">
+                <Grid x:Name="LeftZone" Grid.Column="0" Background="#2D2D30" Opacity="0.8">
                     <TextBlock x:Name="LeftZoneText"
                                Text="Zone 1 (Left)" 
                                HorizontalAlignment="Center" 
@@ -96,7 +97,7 @@
                              Visibility="Collapsed"/>
                 
                 <!-- Right Zone -->
-                <Grid x:Name="RightZone" Grid.Column="2" Background="#252526">
+                <Grid x:Name="RightZone" Grid.Column="2" Background="#252526" Opacity="0.8">
                     <TextBlock x:Name="RightZoneText"
                                Text="Zone 2 (Right)" 
                                HorizontalAlignment="Center" 
