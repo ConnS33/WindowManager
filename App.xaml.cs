@@ -80,8 +80,11 @@ namespace WindowManager
 
         private void Application_Exit(object sender, ExitEventArgs e)
         {
-            notifyIcon.Visible = false;
-            notifyIcon.Dispose();
+            if (notifyIcon != null)
+            {
+                notifyIcon.Visible = false;
+                notifyIcon.Dispose();
+            }
         }
     }
 }

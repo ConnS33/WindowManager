@@ -1,16 +1,21 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using WindowManager.Models;
+using WindowManager.Services;
 using Point = System.Windows.Point;
 using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
-using MessageBox = System.Windows.MessageBox;
+using WpfMessageBox = System.Windows.MessageBox;
+using WpfBrushes = System.Windows.Media.Brushes;
+using WpfColor = System.Windows.Media.Color;
+using System.Windows.Forms;
 
 namespace WindowManager
 {
@@ -21,7 +26,9 @@ namespace WindowManager
         private double initialSplitterPosition;
         private GridSplitter? activeSplitter;
         private List<Grid> zones = new List<Grid>();
-        private int zoneCounter = 0;
+        private int zoneCounter = 1;
+        private readonly LayoutManager _layoutManager = new LayoutManager();
+        private bool _isLoadingLayout = false;
 
         public LayoutEditorWindow()
         {
@@ -63,7 +70,7 @@ namespace WindowManager
             catch (Exception ex)
             {
                 Console.WriteLine($"Error in LayoutEditorWindow constructor: {ex}");
-                MessageBox.Show($"Error initializing layout editor: {ex.Message}", "Initialization Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                WpfMessageBox.Show($"Error initializing layout editor: {ex.Message}", "Initialization Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 this.Close();
             }
         }
@@ -101,12 +108,10 @@ namespace WindowManager
             catch (Exception ex)
             {
                 Console.WriteLine($"Error in Window_Loaded: {ex}");
-                MessageBox.Show($"Error initializing layout editor: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                WpfMessageBox.Show("Failed to initialize LayoutEditorWindow. Please check the logs.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 this.Close();
             }
         }
-
-
 
         private void BtnAddZone_Click(object sender, RoutedEventArgs e)
         {
@@ -117,7 +122,7 @@ namespace WindowManager
                 if (zones.Count >= 2)
                 {
                     // For now, limit to 2 zones as in the screenshot
-                    MessageBox.Show("Maximum of 2 zones supported in this version.", "Zone Limit", MessageBoxButton.OK, MessageBoxImage.Information);
+                    WpfMessageBox.Show("Maximum of 2 zones supported in this version.", "Zone Limit", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
                 
@@ -163,66 +168,148 @@ namespace WindowManager
             {
                 string errorMsg = $"Error adding zone: {ex.Message}\n\n{ex.StackTrace}";
                 Console.WriteLine(errorMsg);
-                MessageBox.Show(errorMsg, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                WpfMessageBox.Show(errorMsg, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
         private void UpdateZoneLabels()
         {
-            try
+            for (int i = 0; i < zones.Count; i++)
             {
-                Console.WriteLine("UpdateZoneLabels started");
-                
-                if (LeftZoneText == null)
-                {
-                    Console.WriteLine("LeftZoneText is null!");
-                    return;
-                }
-                
-                Console.WriteLine("Setting LeftZoneText visibility");
-                LeftZoneText.Visibility = Visibility.Visible;
-                
-                // Right zone visibility depends on zones count
-                if (RightZoneText == null)
-                {
-                    Console.WriteLine("RightZoneText is null!");
-                    return;
-                }
-                
-                Console.WriteLine($"Zones count: {zones?.Count}");
-                if (zones?.Count > 1)
-                {
-                    Console.WriteLine("Making RightZoneText visible");
-                    RightZoneText.Visibility = Visibility.Visible;
-                }
-                else
-                {
-                    Console.WriteLine("Hiding RightZoneText");
-                    RightZoneText.Visibility = Visibility.Collapsed;
-                }
-                
-                Console.WriteLine("UpdateZoneLabels completed");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error in UpdateZoneLabels: {ex}");
-                throw; // Re-throw to see the full stack trace
+                if (zones[i] == LeftZone && LeftZoneText != null)
+                    LeftZoneText.Text = $"Zone {i + 1} (Left)";
+                else if (zones[i] == RightZone && RightZoneText != null)
+                    RightZoneText.Text = $"Zone {i + 1} (Right)";
             }
         }
 
-
+        public void LoadLayout(SavedLayout layout)
+        {
+            if (layout == null) return;
+            
+            try
+            {
+                _isLoadingLayout = true;
+                
+                // Reset to default state
+                if (RightColumn != null)
+                    RightColumn.Width = new GridLength(0);
+                if (VerticalSplitter != null)
+                    VerticalSplitter.Visibility = Visibility.Collapsed;
+                if (RightZone != null)
+                    RightZone.Visibility = Visibility.Collapsed;
+                
+                // Clear existing zones except the first one
+                zones.Clear();
+                if (LeftZone != null)
+                    zones.Add(LeftZone);
+                
+                // Apply layout bounds
+                if (layout.Bounds.Width > 0 && layout.Bounds.Height > 0)
+                {
+                    this.Left = layout.Bounds.Left;
+                    this.Top = layout.Bounds.Top;
+                    this.Width = layout.Bounds.Width;
+                    this.Height = layout.Bounds.Height;
+                }
+                
+                // Apply zones
+                foreach (var zoneInfo in layout.Zones)
+                {
+                    if (zoneInfo.Column == 0)
+                    {
+                        // Left zone
+                        if (LeftZone != null)
+                        {
+                            Grid.SetColumn(LeftZone, 0);
+                            Grid.SetRow(LeftZone, 0);
+                            Grid.SetColumnSpan(LeftZone, zoneInfo.ColumnSpan);
+                            Grid.SetRowSpan(LeftZone, zoneInfo.RowSpan);
+                        }
+                    }
+                    else if (zoneInfo.Column > 0)
+                    {
+                        // Right zone
+                        if (RightZone != null && VerticalSplitter != null && RightColumn != null)
+                        {
+                            // Add the second zone
+                            if (zones.Count < 2)
+                            {
+                                BtnAddZone_Click(null, null!);
+                            }
+                            
+                            if (RightZone != null)
+                            {
+                                Grid.SetColumn(RightZone, zoneInfo.Column);
+                                Grid.SetRow(RightZone, zoneInfo.Row);
+                                Grid.SetColumnSpan(RightZone, zoneInfo.ColumnSpan);
+                                Grid.SetRowSpan(RightZone, zoneInfo.RowSpan);
+                            }
+                            
+                            // Set splitter position
+                            if (zoneInfo.Bounds.Width > 0 && this.ActualWidth > 0)
+                            {
+                                double ratio = zoneInfo.Bounds.Width / this.ActualWidth;
+                                LeftColumn.Width = new GridLength(1 - ratio, GridUnitType.Star);
+                                RightColumn.Width = new GridLength(ratio, GridUnitType.Star);
+                            }
+                        }
+                    }
+                }
+                
+                UpdateZoneLabels();
+            }
+            catch (Exception ex)
+            {
+                WpfMessageBox.Show($"Error loading layout: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                _isLoadingLayout = false;
+            }
+        }
 
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
-            // Calculate the split position as a percentage
-            double totalWidth = EditorGrid.ActualWidth;
-            double leftWidth = LeftColumn.ActualWidth;
-            double splitPosition = leftWidth / totalWidth;
-            
-            // TODO: Save the split position to settings
-            // For now, just show a message
-            MessageBox.Show($"Layout saved with split at {splitPosition:P0}", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-            this.Close();
+            try
+            {
+                var dialog = new InputDialog("Enter layout name:", "Save Layout");
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.InputText))
+                {
+                    var layout = new SavedLayout
+                    {
+                        Name = dialog.InputText,
+                        Bounds = new Rect(Left, Top, Width, Height)
+                    };
+
+                    // Save each zone
+                    foreach (var zone in zones)
+                    {
+                        var bounds = new Rect(
+                            zone.TranslatePoint(new Point(0, 0), this),
+                            new System.Windows.Size(zone.ActualWidth, zone.ActualHeight));
+                        
+                        layout.Zones.Add(new LayoutZone
+                        {
+                            Bounds = bounds,
+                            Column = Grid.GetColumn(zone),
+                            Row = Grid.GetRow(zone),
+                            ColumnSpan = Grid.GetColumnSpan(zone),
+                            RowSpan = Grid.GetRowSpan(zone)
+                        });
+                    }
+
+                    _layoutManager.SaveLayout(layout);
+                    WpfMessageBox.Show($"Layout '{dialog.InputText}' saved successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    
+                    this.DialogResult = true;
+                    this.Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                WpfMessageBox.Show($"Error saving layout: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)

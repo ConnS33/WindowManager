@@ -4,9 +4,48 @@
         Title="Window Manager" Height="450" Width="800"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" Topmost="True" WindowState="Maximized"
-        MouseDown="Window_MouseDown" Deactivated="Window_Deactivated"
-        Visibility="Collapsed">
-    <Canvas x:Name="OverlayCanvas" Background="#1A000000">
-        <!-- Zone indicators will be added here dynamically -->
-    </Canvas>
+        MouseDown="Window_MouseDown" Deactivated="Window_Deactivated">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="10">
+            <Button x:Name="btnNewLayout" Content="New Layout" Click="BtnNewLayout_Click" Margin="0,0,10,0" Padding="10,5"/>
+            <Button x:Name="btnRefresh" Content="Refresh" Click="BtnRefresh_Click" Margin="0,0,10,0" Padding="10,5"/>
+        </StackPanel>
+        
+        <ListView x:Name="layoutsList" Grid.Row="1" Margin="10" 
+                  SelectionChanged="LayoutsList_SelectionChanged"
+                  MouseDoubleClick="LayoutsList_MouseDoubleClick">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Name" DisplayMemberBinding="{Binding Name}" Width="200"/>
+                    <GridViewColumn Header="Zones" DisplayMemberBinding="{Binding Zones.Count}" Width="100"/>
+                    <GridViewColumn Header="Size" Width="200">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock>
+                                    <Run Text="{Binding Bounds.Width, StringFormat={}{0:F0}}"/>
+                                    <Run Text="x"/>
+                                    <Run Text="{Binding Bounds.Height, StringFormat={}{0:F0}}"/>
+                                </TextBlock>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                </GridView>
+            </ListView.View>
+            <ListView.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Apply" Click="ApplyLayout_Click"/>
+                    <MenuItem Header="Delete" Click="DeleteLayout_Click"/>
+                </ContextMenu>
+            </ListView.ContextMenu>
+        </ListView>
+        
+        <Canvas x:Name="OverlayCanvas" Grid.Row="0" Grid.RowSpan="2" Panel.ZIndex="1000" Background="#1A000000">
+            <!-- Zone indicators will be added here dynamically -->
+        </Canvas>
+    </Grid>
 </Window>

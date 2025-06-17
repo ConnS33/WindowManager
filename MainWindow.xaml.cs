@@ -1,13 +1,20 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
-using System.Windows.Controls;  // For Canvas
-using Brushes = System.Windows.Media.Brushes;  // Resolve Brushes ambiguity
-using Color = System.Windows.Media.Color;  // Resolve Color ambiguity
+using WindowManager.Models;
+using WindowManager.Services;
+using Point = System.Windows.Point;
+using Size = System.Windows.Size;
+using WpfMessageBox = System.Windows.MessageBox;
+using WpfBrushes = System.Windows.Media.Brushes;
+using WpfColor = System.Windows.Media.Color;
 
 namespace WindowManager
 {
@@ -54,6 +61,8 @@ namespace WindowManager
 
         private bool isOverlayVisible = false;
         private WindowInteropHelper host;
+        private readonly LayoutManager _layoutManager = new LayoutManager();
+        private List<SavedLayout> _savedLayouts = new List<SavedLayout>();
 
         public MainWindow()
         {
@@ -62,6 +71,94 @@ namespace WindowManager
             host.EnsureHandle();
             RegisterHotKeys();
             CreateZoneOverlays();
+            LoadLayouts();
+        }
+
+        private void LoadLayouts()
+        {
+            try
+            {
+                _savedLayouts = _layoutManager.LoadAllLayouts();
+                layoutsList.ItemsSource = null;
+                layoutsList.ItemsSource = _savedLayouts;
+            }
+            catch (Exception ex)
+            {
+                WpfMessageBox.Show($"Error loading layouts: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void BtnNewLayout_Click(object sender, RoutedEventArgs e)
+        {
+            var editor = new LayoutEditorWindow();
+            if (editor.ShowDialog() == true)
+            {
+                LoadLayouts();
+            }
+        }
+
+        private void BtnRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            LoadLayouts();
+        }
+
+        private void ApplyLayout(SavedLayout layout)
+        {
+            if (layout == null) return;
+
+            // TODO: Apply the layout to the current windows
+            // This is where you would implement the logic to arrange windows
+            // according to the saved layout
+            
+            WpfMessageBox.Show($"Applied layout: {layout.Name}", "Success", 
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void LayoutsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Optional: Preview the selected layout
+        }
+
+        private void LayoutsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            var selectedItem = layoutsList.SelectedItem as SavedLayout;
+            if (selectedItem != null)
+            {
+                ApplyLayout(selectedItem);
+            }
+        }
+
+        private void ApplyLayout_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedItem = layoutsList.SelectedItem as SavedLayout;
+            if (selectedItem != null)
+            {
+                ApplyLayout(selectedItem);
+            }
+        }
+
+        private void DeleteLayout_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedItem = layoutsList.SelectedItem as SavedLayout;
+            if (selectedItem != null)
+            {
+                var result = WpfMessageBox.Show($"Are you sure you want to delete the layout '{selectedItem.Name}'?",
+                    "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                
+                if (result == MessageBoxResult.Yes)
+                {
+                    try
+                    {
+                        _layoutManager.DeleteLayout(selectedItem.Name);
+                        LoadLayouts();
+                    }
+                    catch (Exception ex)
+                    {
+                        WpfMessageBox.Show($"Error deleting layout: {ex.Message}", "Error", 
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+            }
         }
 
         
@@ -183,9 +280,9 @@ namespace WindowManager
             {
                 Width = width,
                 Height = height,
-                Stroke = Brushes.White,
+                Stroke = System.Windows.Media.Brushes.White,
                 StrokeThickness = 4,
-                Fill = new SolidColorBrush(Color.FromArgb(0x60, 0x00, 0x7A, 0xCC)),
+                Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x60, 0x00, 0x7A, 0xCC)) { Opacity = 0.5 },
                 Opacity = 0,
                 RadiusX = 8,
                 RadiusY = 8
@@ -196,9 +293,9 @@ namespace WindowManager
             {
                 Width = width - 4,
                 Height = height - 4,
-                Stroke = Brushes.White,
+                Stroke = WpfBrushes.White,
                 StrokeThickness = 2,
-                Fill = Brushes.Transparent,
+                Fill = WpfBrushes.Transparent,
                 Opacity = 0.8,
                 RadiusX = 6,
                 RadiusY = 6
@@ -215,7 +312,7 @@ namespace WindowManager
             var textBlock = new System.Windows.Controls.TextBlock
             {
                 Text = label,
-                Foreground = Brushes.White,
+                Foreground = WpfBrushes.White,
                 FontSize = 18,
                 FontWeight = FontWeights.SemiBold,
                 TextAlignment = TextAlignment.Center,
