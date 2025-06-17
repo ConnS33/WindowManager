@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using System.Windows.Threading;
 using WindowManager.Models;
 using WindowManager.Services;
 using Point = System.Windows.Point;
@@ -15,20 +15,23 @@ using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using WpfMessageBox = System.Windows.MessageBox;
 using WpfBrushes = System.Windows.Media.Brushes;
 using WpfColor = System.Windows.Media.Color;
+using WpfOrientation = System.Windows.Controls.Orientation;
+using WpfHorizontalAlignment = System.Windows.HorizontalAlignment;
 using System.Windows.Forms;
 
 namespace WindowManager
 {
-    public partial class LayoutEditorWindow : Window
+    public partial class LayoutEditorWindow : Window, IDisposable
     {
         private bool isDragging = false;
         private Point dragStartPoint;
         private double initialSplitterPosition;
         private GridSplitter? activeSplitter;
-        private List<Grid> zones = new List<Grid>();
+        private List<Grid> zones = new();
         private int zoneCounter = 1;
-        private readonly LayoutManager _layoutManager = new LayoutManager();
+        private readonly LayoutManager _layoutManager = new();
         private bool _isLoadingLayout = false;
+        private bool _disposedValue;
 
         public LayoutEditorWindow()
         {
@@ -52,14 +55,14 @@ namespace WindowManager
                     LeftZone = FindName("LeftZone") as Grid;
                     Console.WriteLine($"LeftZone after FindName: {LeftZone != null}");
                 }
-                
-                if (LeftZone != null && !zones.Contains(LeftZone))
+
+                if (LeftZone != null)
                 {
                     zones.Add(LeftZone);
-                    Console.WriteLine("Added LeftZone to zones list in constructor");
                 }
-                
-                // Set up key handler
+
+                // Set up event handlers
+                this.Closed += (s, e) => Dispose();
                 this.PreviewKeyDown += (s, e) => { if (e.Key == Key.Escape) this.Close(); };
                 
                 // Initialize with a single zone
@@ -112,6 +115,7 @@ namespace WindowManager
                 this.Close();
             }
         }
+
 
         private void BtnAddZone_Click(object sender, RoutedEventArgs e)
         {
@@ -235,7 +239,9 @@ namespace WindowManager
                             // Add the second zone
                             if (zones.Count < 2)
                             {
-                                BtnAddZone_Click(null, null!);
+                                // Create a dummy sender object to avoid null reference
+                                object sender = new object();
+                                BtnAddZone_Click(sender, new RoutedEventArgs());
                             }
                             
                             if (RightZone != null)
@@ -273,34 +279,72 @@ namespace WindowManager
         {
             try
             {
-                var dialog = new InputDialog("Enter layout name:", "Save Layout");
-                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.InputText))
+                var inputDialog = new System.Windows.Window
                 {
+                    Title = "Save Layout",
+                    Width = 300,
+                    Height = 120,
+                    WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                    ResizeMode = ResizeMode.NoResize
+                };
+
+                var stackPanel = new StackPanel { Margin = new Thickness(10) };
+                var textBox = new System.Windows.Controls.TextBox { Margin = new Thickness(0, 5, 0, 10) };
+                var buttonPanel = new StackPanel { Orientation = WpfOrientation.Horizontal, HorizontalAlignment = WpfHorizontalAlignment.Right };
+                var okButton = new System.Windows.Controls.Button { Content = "OK", IsDefault = true, Width = 70, Margin = new Thickness(0, 0, 10, 0) };
+                var cancelButton = new System.Windows.Controls.Button { Content = "Cancel", IsCancel = true, Width = 70 };
+
+                stackPanel.Children.Add(new TextBlock { Text = "Enter layout name:" });
+                stackPanel.Children.Add(textBox);
+                buttonPanel.Children.Add(okButton);
+                buttonPanel.Children.Add(cancelButton);
+                stackPanel.Children.Add(buttonPanel);
+                inputDialog.Content = stackPanel;
+
+                bool? result = null;
+                okButton.Click += (s, args) => { result = true; inputDialog.Close(); };
+                cancelButton.Click += (s, args) => { result = false; inputDialog.Close(); };
+
+                inputDialog.ShowDialog();
+
+                if (result == true && !string.IsNullOrWhiteSpace(textBox.Text))
+                {
+                    // Get the screen bounds
+                    var screenWidth = SystemParameters.PrimaryScreenWidth;
+                    var screenHeight = SystemParameters.PrimaryScreenHeight;
+                    
                     var layout = new SavedLayout
                     {
-                        Name = dialog.InputText,
+                        Name = textBox.Text,
                         Bounds = new Rect(Left, Top, Width, Height)
                     };
 
                     // Save each zone
                     foreach (var zone in zones)
                     {
-                        var bounds = new Rect(
-                            zone.TranslatePoint(new Point(0, 0), this),
-                            new System.Windows.Size(zone.ActualWidth, zone.ActualHeight));
-                        
-                        layout.Zones.Add(new LayoutZone
+                        if (zone != null)
                         {
-                            Bounds = bounds,
-                            Column = Grid.GetColumn(zone),
-                            Row = Grid.GetRow(zone),
-                            ColumnSpan = Grid.GetColumnSpan(zone),
-                            RowSpan = Grid.GetRowSpan(zone)
-                        });
+                            // Get the zone's position relative to the screen
+                            var point = zone.PointToScreen(new Point(0, 0));
+                            var bounds = new Rect(
+                                point.X,
+                                point.Y,
+                                zone.ActualWidth,
+                                zone.ActualHeight);
+                            
+                            layout.Zones.Add(new LayoutZone
+                            {
+                                Bounds = bounds,
+                                Column = Grid.GetColumn(zone),
+                                Row = Grid.GetRow(zone),
+                                ColumnSpan = Grid.GetColumnSpan(zone),
+                                RowSpan = Grid.GetRowSpan(zone)
+                            });
+                        }
                     }
 
                     _layoutManager.SaveLayout(layout);
-                    WpfMessageBox.Show($"Layout '{dialog.InputText}' saved successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    WpfMessageBox.Show($"Layout '{textBox.Text}' saved successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
                     
                     this.DialogResult = true;
                     this.Close();
@@ -329,12 +373,15 @@ namespace WindowManager
         
         private void Splitter_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            activeSplitter = (GridSplitter)sender;
-            isDragging = true;
-            dragStartPoint = e.GetPosition(EditorGrid);
-            initialSplitterPosition = LeftColumn.Width.Value;
-            activeSplitter.CaptureMouse();
-            e.Handled = true;
+            if (sender is GridSplitter splitter)
+            {
+                activeSplitter = splitter;
+                isDragging = true;
+                dragStartPoint = e.GetPosition(EditorGrid);
+                initialSplitterPosition = LeftColumn.Width.Value;
+                activeSplitter.CaptureMouse();
+                e.Handled = true;
+            }
         }
         
         private void EditorGrid_MouseMove(object sender, MouseEventArgs e)
@@ -386,25 +433,24 @@ namespace WindowManager
             }
         }
 
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposedValue)
+            {
+                if (disposing)
+                {
+                    // Dispose managed state (managed objects)
+                    activeSplitter = null;
+                    zones.Clear();
+                }
+                _disposedValue = true;
+            }
+        }
 
-    }
-    
-    // Native methods for window transparency
-    internal static class NativeMethods
-    {
-        public const int GWL_EXSTYLE = -20;
-        public const int WS_EX_LAYERED = 0x80000;
-        public const int WS_EX_TRANSPARENT = 0x20;
-        public const int LWA_ALPHA = 0x2;
-        public const int LWA_COLORKEY = 0x1;
-
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        public static extern int GetWindowLong(IntPtr hwnd, int index);
-
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        public static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
-
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        public static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
     }
 }

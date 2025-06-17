@@ -1,13 +1,18 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using System.Runtime.InteropServices;
-using System.Windows.Interop;
+using System.Windows.Threading;
 using WindowManager.Models;
 using WindowManager.Services;
 using Point = System.Windows.Point;
@@ -15,10 +20,12 @@ using Size = System.Windows.Size;
 using WpfMessageBox = System.Windows.MessageBox;
 using WpfBrushes = System.Windows.Media.Brushes;
 using WpfColor = System.Windows.Media.Color;
+using HorizontalAlignment = System.Windows.HorizontalAlignment;
+using VerticalAlignment = System.Windows.VerticalAlignment;
 
 namespace WindowManager
 {
-    public partial class MainWindow : Window
+    public partial class MainWindow : Window, INotifyPropertyChanged, IDisposable
     {
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
@@ -61,29 +68,167 @@ namespace WindowManager
 
         private bool isOverlayVisible = false;
         private WindowInteropHelper host;
-        private readonly LayoutManager _layoutManager = new LayoutManager();
-        private List<SavedLayout> _savedLayouts = new List<SavedLayout>();
+        private readonly LayoutManager _layoutManager = new();
+        private readonly WindowManagerService _windowManager = new();
+        private readonly DispatcherTimer _refreshTimer = new();
+        private ObservableCollection<WindowInfo> _openWindows = new();
+        private ObservableCollection<SavedLayout> _savedLayouts = new();
+        private bool _disposedValue;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
+        {
+            base.OnPropertyChanged(e);
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(e.Property.Name));
+        }
+
+        protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName ?? string.Empty));
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposedValue)
+            {
+                if (disposing)
+                {
+                    _refreshTimer.Stop();
+                    _refreshTimer.Tick -= RefreshTimer_Tick;
+                }
+                _disposedValue = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
+
+        public ObservableCollection<WindowInfo> OpenWindows
+        {
+            get => _openWindows;
+            set
+            {
+                _openWindows = value;
+                OnPropertyChanged();
+            }
+        }
 
         public MainWindow()
         {
             InitializeComponent();
+
+            _refreshTimer.Interval = TimeSpan.FromSeconds(5);
+            _refreshTimer.Tick += RefreshTimer_Tick;
+            _refreshTimer.Start();
+
+            // Set up data binding
+            windowsList.ItemsSource = _openWindows;
+            layoutsList.ItemsSource = _savedLayouts;
+
+            // Initial load of windows and layouts
+            RefreshOpenWindows();
+            LoadLayouts();
+
+            // Handle window closing
+            this.Closed += (s, e) => 
+            {
+                _refreshTimer.Stop();
+                _refreshTimer.Tick -= RefreshTimer_Tick;
+            };
+
             host = new WindowInteropHelper(this);
             host.EnsureHandle();
             RegisterHotKeys();
             CreateZoneOverlays();
-            LoadLayouts();
         }
 
-        private void LoadLayouts()
+        private void RefreshTimer_Tick(object? sender, EventArgs e)
+        {
+            // Ensure we're on the UI thread
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(RefreshOpenWindows);
+            }
+            else
+            {
+                RefreshOpenWindows();
+            }
+        }
+
+        private void InitializeWindowRefreshTimer()
+        {
+            _refreshTimer.Interval = TimeSpan.FromSeconds(1);
+            _refreshTimer.Tick += RefreshTimer_Tick;
+        }
+
+        private void RefreshOpenWindows()
         {
             try
             {
-                _savedLayouts = _layoutManager.LoadAllLayouts();
-                layoutsList.ItemsSource = null;
-                layoutsList.ItemsSource = _savedLayouts;
+                var currentWindows = _windowManager.GetOpenWindows();
+                if (System.Windows.Application.Current?.Dispatcher != null)
+                {
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        // Clear and repopulate the collection to update the UI
+                        _openWindows.Clear();
+                        foreach (var window in currentWindows)
+                        {
+                            _openWindows.Add(window);
+                        }
+                    });
+                }
             }
             catch (Exception ex)
             {
+                Debug.WriteLine($"Error refreshing windows: {ex.Message}");
+            }
+        }
+
+        private void BtnRefreshWindows_Click(object sender, RoutedEventArgs e)
+        {
+            RefreshOpenWindows();
+        }
+
+        public void LoadLayouts()
+        {
+            try
+            {
+                Debug.WriteLine("Loading layouts...");
+                var layouts = _layoutManager.LoadAllLayouts();
+                Debug.WriteLine($"Found {layouts.Count} layouts");
+                
+                // Clear existing layouts
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                {
+                    _savedLayouts.Clear();
+                    
+                    // Add each layout to the observable collection
+                    foreach (var layout in layouts)
+                    {
+                        if (layout != null && !string.IsNullOrEmpty(layout.Name))
+                        {
+                            Debug.WriteLine($"Adding layout: {layout.Name} with {layout.Zones?.Count ?? 0} zones");
+                            _savedLayouts.Add(layout);
+                        }
+                    }
+                    
+                    // Update the UI
+                    if (layoutsList != null)
+                    {
+                        layoutsList.ItemsSource = null;
+                        layoutsList.ItemsSource = _savedLayouts;
+                        Debug.WriteLine($"List updated with {_savedLayouts.Count} layouts");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error in LoadLayouts: {ex}");
                 WpfMessageBox.Show($"Error loading layouts: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -102,38 +247,170 @@ namespace WindowManager
             LoadLayouts();
         }
 
-        private void ApplyLayout(SavedLayout layout)
+        public void ApplyLayout(SavedLayout layout, bool applyToAllWindows = false)
         {
-            if (layout == null) return;
+            if (layout == null || layout.Zones.Count == 0) 
+            {
+                WpfMessageBox.Show("The selected layout has no zones defined.", "Invalid Layout", 
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
-            // TODO: Apply the layout to the current windows
-            // This is where you would implement the logic to arrange windows
-            // according to the saved layout
-            
-            WpfMessageBox.Show($"Applied layout: {layout.Name}", "Success", 
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            try
+            {
+                // Get the primary screen dimensions
+                var screenWidth = SystemParameters.PrimaryScreenWidth;
+                var screenHeight = SystemParameters.PrimaryScreenHeight;
+                var screenBounds = new Rect(0, 0, screenWidth, screenHeight);
+
+                if (applyToAllWindows)
+                {
+                    // Apply layout to all open windows
+                    var windows = _windowManager.GetOpenWindows()
+                        .Where(w => w.Handle != IntPtr.Zero)
+                        .ToList();
+
+                    if (windows.Count == 0)
+                    {
+                        WpfMessageBox.Show("No open windows found to arrange.", "No Windows", 
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+                        return;
+                    }
+
+
+                    // For each zone in the layout, move a window to it
+                    for (int i = 0; i < Math.Min(windows.Count, layout.Zones.Count); i++)
+                    {
+                        var window = windows[i];
+                        var zone = layout.Zones[i];
+                        
+                        // Convert normalized zone coordinates to screen coordinates
+                        var zoneRect = new Rect(
+                            zone.Bounds.Left,
+                            zone.Bounds.Top,
+                            zone.Bounds.Width,
+                            zone.Bounds.Height);
+
+                        // Move the window to the zone
+                        _windowManager.MoveWindowToZone(window.Handle, zoneRect, screenBounds);
+                    }
+                }
+                else
+                {
+                    // Apply layout to the currently selected window
+                    var selectedWindow = windowsList.SelectedItem as WindowInfo;
+                    if (selectedWindow == null)
+                    {
+                        WpfMessageBox.Show("Please select a window to apply the layout to.", "No Window Selected", 
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+                        return;
+                    }
+                    // Get the first zone in the layout
+                    var zone = layout.Zones[0];
+                    var zoneRect = new Rect(
+                        zone.Bounds.Left,
+                        zone.Bounds.Top,
+                        zone.Bounds.Width,
+                        zone.Bounds.Height);
+
+                    _windowManager.MoveWindowToZone(selectedWindow.Handle, zoneRect, screenBounds);
+                }
+
+                // Show a brief notification instead of a message box
+                var notification = new Window
+                {
+                    WindowStyle = WindowStyle.None,
+                    AllowsTransparency = true,
+                    Background = new SolidColorBrush(System.Windows.Media.Colors.Black) { Opacity = 0.7 },
+                    SizeToContent = SizeToContent.WidthAndHeight,
+                    Topmost = true,
+                    ShowInTaskbar = false,
+                    Left = SystemParameters.PrimaryScreenWidth - 200,
+                    Top = 50
+                };
+
+                var textBlock = new TextBlock
+                {
+                    Text = $"Applied: {layout.Name}",
+                    Foreground = System.Windows.Media.Brushes.White,
+                    Margin = new Thickness(20, 10, 20, 10),
+                    FontSize = 14
+                };
+
+                notification.Content = textBlock;
+                notification.Show();
+
+                // Auto-close the notification after 2 seconds
+                var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+                timer.Tick += (s, e) => {
+                    timer.Stop();
+                    notification.Close();
+                };
+                timer.Start();
+            }
+            catch (Exception ex)
+            {
+                WpfMessageBox.Show($"Error applying layout: {ex.Message}", "Error", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void LayoutsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // Optional: Preview the selected layout
+            try
+            {
+                if (e.AddedItems.Count > 0 && e.AddedItems[0] is SavedLayout selectedLayout)
+                {
+                    // Show a preview of the selected layout
+                    ShowLayoutPreview(selectedLayout);
+                }
+                else
+                {
+                    // If no item is selected, hide the overlay
+                    HideOverlay();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error in LayoutsList_SelectionChanged: {ex}");
+                HideOverlay();
+            }
         }
 
         private void LayoutsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            var selectedItem = layoutsList.SelectedItem as SavedLayout;
-            if (selectedItem != null)
+            if (layoutsList.SelectedItem is SavedLayout selectedLayout)
             {
-                ApplyLayout(selectedItem);
+                // If a window is selected, apply to that window, otherwise apply to all
+                ApplyLayout(selectedLayout, windowsList.SelectedItem == null);
             }
         }
 
         private void ApplyLayout_Click(object sender, RoutedEventArgs e)
         {
-            var selectedItem = layoutsList.SelectedItem as SavedLayout;
-            if (selectedItem != null)
+            if (layoutsList.SelectedItem is SavedLayout selectedLayout)
             {
-                ApplyLayout(selectedItem);
+                // Apply to selected window if one is selected, otherwise apply to all
+                ApplyLayout(selectedLayout, windowsList.SelectedItem == null);
+            }
+            else
+            {
+                WpfMessageBox.Show("Please select a layout to apply.", "No Layout Selected", 
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private void ApplyToAllWindows_Click(object sender, RoutedEventArgs e)
+        {
+            if (layoutsList.SelectedItem is SavedLayout selectedLayout)
+            {
+                // Apply to all open windows
+                ApplyLayout(selectedLayout, true);
+            }
+            else
+            {
+                WpfMessageBox.Show("Please select a layout to apply.", "No Layout Selected", 
+                    MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
@@ -331,6 +608,69 @@ namespace WindowManager
             Canvas.SetLeft(textBlock, x + (width - textBlock.DesiredSize.Width) / 2);
             Canvas.SetTop(textBlock, y + (height - textBlock.DesiredSize.Height) / 2);
             OverlayCanvas.Children.Add(textBlock);
+        }
+
+        private void ShowLayoutPreview(SavedLayout layout)
+        {
+            try
+            {
+                if (OverlayCanvas == null) return;
+                
+                // Clear existing preview
+                OverlayCanvas.Children.Clear();
+
+                if (layout == null || layout.Zones.Count == 0)
+                {
+                    OverlayCanvas.Visibility = Visibility.Collapsed;
+                    return;
+                }
+
+                // Show each zone in the layout
+                foreach (var zone in layout.Zones)
+                {
+                    var border = new Border
+                    {
+                        BorderBrush = new SolidColorBrush(System.Windows.Media.Colors.DodgerBlue),
+                        BorderThickness = new Thickness(2),
+                        Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(60, 30, 144, 255)),
+                        Width = zone.Bounds.Width,
+                        Height = zone.Bounds.Height,
+                        CornerRadius = new CornerRadius(4)
+                    };
+
+                    // Convert screen coordinates to canvas coordinates
+                    var screenPoint = new Point(zone.Bounds.Left, zone.Bounds.Top);
+                    var canvasPoint = this.PointFromScreen(screenPoint);
+
+                    Canvas.SetLeft(border, canvasPoint.X);
+                    Canvas.SetTop(border, canvasPoint.Y);
+
+                    // Add zone label
+                    var label = new TextBlock
+                    {
+                        Text = $"Zone {layout.Zones.IndexOf(zone) + 1}",
+                        Foreground = System.Windows.Media.Brushes.White,
+                        FontWeight = FontWeights.Bold,
+                        HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                        VerticalAlignment = System.Windows.VerticalAlignment.Center,
+                        Margin = new Thickness(5),
+                        TextAlignment = TextAlignment.Center
+                    };
+
+                    border.Child = label;
+                    OverlayCanvas.Children.Add(border);
+                }
+
+
+                // Show the overlay
+                OverlayCanvas.Visibility = Visibility.Visible;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error showing layout preview: {ex}");
+                if (OverlayCanvas != null)
+                    OverlayCanvas.Visibility = Visibility.Collapsed;
+            }
         }
 
         private void ShowOverlay()

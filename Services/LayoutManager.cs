@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
@@ -34,24 +35,41 @@ namespace WindowManager.Services
         {
             var layouts = new List<SavedLayout>();
             
+            Debug.WriteLine($"Looking for layouts in: {LayoutsPath}");
+            
             if (!Directory.Exists(LayoutsPath))
+            {
+                Debug.WriteLine("Layouts directory does not exist");
                 return layouts;
+            }
                 
-            foreach (var file in Directory.GetFiles(LayoutsPath, "*.json"))
+            var files = Directory.GetFiles(LayoutsPath, "*.json");
+            Debug.WriteLine($"Found {files.Length} layout files");
+                
+            foreach (var file in files)
             {
                 try
                 {
+                    Debug.WriteLine($"Loading layout from: {file}");
                     string json = File.ReadAllText(file);
                     var layout = JsonSerializer.Deserialize<SavedLayout>(json);
                     if (layout != null)
+                    {
+                        Debug.WriteLine($"Successfully loaded layout: {layout.Name} with {layout.Zones?.Count ?? 0} zones");
                         layouts.Add(layout);
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"Failed to deserialize layout from {file}");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error loading layout {file}: {ex.Message}");
+                    Debug.WriteLine($"Error loading layout {file}: {ex}");
                 }
             }
             
+            Debug.WriteLine($"Returning {layouts.Count} loaded layouts");
             return layouts;
         }
         
